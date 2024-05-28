@@ -1,34 +1,37 @@
 import os
-import smtplib
+import jwt
 from typing import Annotated
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 
 app = FastAPI()
 
 load_dotenv()
 
 
-def send_email(sender: str, recipient: str, message: str | None):
+def send_magic_link(user_id: int):
 
-    EMAIL = os.getenv("EMAIL")
-    PASSWORD = os.getenv("PASSWORD")
-    RECIPIENT_EMAIL = os.getenv("RECIPIENT_EMAIL")
-    SMTP_URL = os.getenv("SMTP_URL")
+    encoded_jwt = jwt.encode({"user_id": user_id}, "secret")
 
-    MESSAGE = f"""From: {sender} {EMAIL}
-To: {recipient} {RECIPIENT_EMAIL}
-Subject: hello there
+    FROM_EMAIL = os.getenv("FROM_EMAIL")
+    TO_EMAIL = os.getenv("TO_EMAIL")
 
-{message}
-"""
+    message = Mail(
+        from_email=FROM_EMAIL,
+        to_emails=TO_EMAIL,
+        subject="Login Link",
+        html_content=f"<strong>Here's your token: {encoded_jwt}</strong>",
+    )
 
-    print(MESSAGE)
+    try:
+        sg = SendGridAPIClient(os.getenv("SG_API_KEY"))
+        response = sg.send(message)
+    except Exception as e:
+        print(e.message)
 
-    server = smtplib.SMTP(SMTP_URL, 587)
-    server.starttls()
-    server.login(EMAIL, PASSWORD)
-    server.sendmail(EMAIL, RECIPIENT_EMAIL, MESSAGE)
+    return "success"
 
 
 @app.get("/")
@@ -37,10 +40,6 @@ async def root():
 
 
 @app.post("/send")
-async def send_away(
-    recipient: Annotated[str, Form()],
-    sender: Annotated[str, Form()],
-    message: Annotated[str | None, Form()] = None,
-):
-    send_email(sender=sender, recipient=recipient, message=message)
-    return "✉️"
+async def send_away(user_id: Annotated[int, Form()]):
+    result = send_magic_link(user_id)
+    return result
